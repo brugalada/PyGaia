@@ -4,7 +4,7 @@ __all__ = ['cylindrical_to_cartesian', 'cartesian_to_cylindrical',
 
 import numpy as np
 
-from .constants import au_mas_parsec, au_km_year_per_sec
+from pygaia.astrometry.constants import au_mas_parsec, au_km_year_per_sec
 
 def cylindrical_to_cartesian(r, phi, z,Dsun=8.178,Zsun=0.0208):
     """
@@ -86,9 +86,9 @@ def cartesian_to_cylindrical(x, y, z,Dsun=8.178,Zsun=0.0208):
     
     #correct for the small rotation necesary to aling the coordinates with the "galacitc plane"
     #rot = np.array([[costheta,0.,-sintheta], [0.,1.,0.],[sintheta,0.,costheta]])
-    x_ = (x-Dsun)*costheta - (z)*sintheta
+    x_ = (x-Dsun)*costheta + (z)*sintheta
     y_ = y
-    z_ = (x-Dsun)*sintheta + (z)*costheta
+    z_ = -(x-Dsun)*sintheta + (z)*costheta
     
     r   = np.sqrt(y_**2.+x_**2.)
     phi = np.arctan2(-y_,-x_)
@@ -376,7 +376,7 @@ def phase_space_to_galcen(x, y, z, vx, vy, vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,
     """
     r, phi, z = cartesian_to_cylindrical(x, y, z, Dsun=Dsun, Zsun=Zsun)
     
-    ## 1) adapt velocities to the right fram
+    ## 1) adapt velocities to the correct ref. frame
     Xsun=np.sqrt(Dsun**2.-Zsun**2.)
     costheta, sintheta= Xsun/Dsun, -Zsun/Dsun
     rot = np.array([[costheta,0.,-sintheta], [0.,1.,0.],[sintheta,0.,costheta]])
@@ -398,3 +398,64 @@ def phase_space_to_galcen(x, y, z, vx, vy, vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,
     vz  = vz_
 
     return r,phi,z,vr,vphi,vz
+
+
+
+def galcen_to_phase_space(r,phi,z,vr,vphi,vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,Vsun=248.50,Wsun=7.25):
+    """
+    From the given cylindrical coordinates calculate the corresponding phase space coordinates. 
+    The phase space coordinates are assumed to represent barycentric (i.e. centred on the Sun) positions and velocities.
+
+    This function has no mechanism to deal with units. The velocity units are always assumed to be km/s,
+    kpc for the positions and radians for the returned angles.
+
+    NOTE that the doppler factor k=1/(1-vrad/c) is NOT used in the calculations. This is not a problem for
+    sources moving at typical velocities of Galactic stars.
+
+    Parameters
+    ----------
+    r     - galactocentric radius (kpc).
+    phi   - azimuthal angle (radians, negative in the direction of rotation)
+    z     - galactocentric height (kpc).
+    vr    - galactocentric radial velocity (km/s, positive if star is moving outwards)
+    vphi  - azimuthal velocity (km/s, negative for prograde stars)
+    vz    - vertical velocity (km/s, positive towards NGP)
+    Dsun (optional) - distance from the Sun to Sgr A* (kpc). Default: 8.178 (Gravity Collaboration et al. 2019)
+    Zsun (optional) - distance from the Sun to the galactic midplane (kpc). Default: 0.0208 (Bennett & Bovy 2019)
+    Usun (optional) - cartesian velocity of the Sun in the v_x component (km/s). Default: 11.10 (Schönrich et al. 2010)
+    Vsun (optional) - cartesian velocity of the Sun in the v_y component, peculiar+LSR (km/s). Default: 248.50 (Reid & Brunthaler 2020)
+    Wsun (optional) - cartesian velocity of the Sun in the v_z component (km/s). Default: 7.25 (Schönrich et al. 2010)
+
+    Returns
+    -------
+    x - The x component of the barycentric position vector (in kpc).
+    y - The y component of the barycentric position vector (in kpc).
+    z - The z component of the barycentric position vector (in kpc).
+    vx - The x component of the barycentric velocity vector (in km/s).
+    vy - The y component of the barycentric velocity vector (in km/s).
+    vz - The z component of the barycentric velocity vector (in km/s).
+    
+    """
+    x, y, z = cylindrical_to_cartesian(r, phi, z, Dsun=Dsun, Zsun=Zsun)
+    
+    ## 1) Obtain galactocentric cartessian coordinates
+    s   = np.sin((np.pi+phi))
+    c   = np.cos((np.pi+phi))  
+    vx_  = vr*c - vphi*s
+    vy_  = vr*s + vphi*c
+    vz_  = vz
+    
+    ## 2) adapt velocities to the correct ref. frame
+    Xsun=np.sqrt(Dsun**2.-Zsun**2.)
+    costheta, sintheta= Xsun/Dsun, -Zsun/Dsun
+    rot = np.array([[costheta,0.,+sintheta], [0.,1.,0.],[sintheta,0.,-costheta]])
+    
+    vx_ = vx_*rot[0,0] + vz_*rot[0,-1]
+    #vy_ = vy_
+    vz_ = -vx_*rot[-1,0] + vz_*rot[-1,-1]
+    
+    vx=vx_-Usun
+    vy=vy_-Vsun
+    vz=-vz_-Wsun
+
+    return x, y, z, vx, vy, vz
