@@ -6,7 +6,7 @@ import numpy as np
 
 from pygaia.astrometry.constants import au_mas_parsec, au_km_year_per_sec
 
-def cylindrical_to_cartesian(r, phi, z,Dsun=8.178,Zsun=0.0208):
+def cylindrical_to_cartesian(r, phi, z,Dsun=8.178,Zsun=0.0208,_galcentric=False):
     """
     Convert cylindrical to Cartesian coordinates. The input can be scalars or 1-dimensional numpy arrays.
     Note that the angle coordinate is defined positive in the direction CONTRARY to the Galactic rotation,
@@ -40,22 +40,26 @@ def cylindrical_to_cartesian(r, phi, z,Dsun=8.178,Zsun=0.0208):
     y = r * np.sin(phi)
     z = z
     
-    # 2) translate the centre of the frame to the Sun's position
-    #x = Xsun - x
-    #y = y
-    #z = z - Zsun
+    if not _galcentric:
+        # 2) translate the centre of the frame to the Sun's position
+        #x = Xsun - x
+        #y = y
+        #z = z - Zsun
+
+        # 3) Undo rotation to align to the Heliocentric Galactic ref. frame
+        #rot = np.array([[costheta,0.,sintheta], [0.,1.,0.],[-sintheta,0.,costheta]])
+        x = (x)*costheta + z*sintheta
+        y = -y
+        z = -(x)*sintheta + z*costheta
+
+        return -x+Dsun, y, z
     
-    # 3) Undo rotation to align to the Heliocentric Galactic ref. frame
-    #rot = np.array([[costheta,0.,sintheta], [0.,1.,0.],[-sintheta,0.,costheta]])
-    x = (x)*costheta + z*sintheta
-    y = -y
-    z = -(x)*sintheta + z*costheta
-    
-    return -x+Dsun, y, z
+    else:
+        return -x,-y,z
 
 
 
-def cartesian_to_cylindrical(x, y, z,Dsun=8.178,Zsun=0.0208):
+def cartesian_to_cylindrical(x, y, z,Dsun=8.178,Zsun=0.0208,_galcentric=False):
     """
     Convert Cartesian to Cylindrical coordinates. The input can be scalars or 1-dimensional numpy arrays.
     Note that the angle coordinate is defined positive in the direction CONTRARY to the Galactic rotation,
@@ -80,19 +84,19 @@ def cartesian_to_cylindrical(x, y, z,Dsun=8.178,Zsun=0.0208):
     
     NOTE THAT THE LONGITUDE ANGLE IS BETWEEN 0 AND +2PI.
     """    
+    if not _galcentric:
+        Xsun=np.sqrt(Dsun**2.-Zsun**2.)
+        costheta, sintheta= Xsun/Dsun, -Zsun/Dsun
+
+        #correct for the small rotation necesary to aling the coordinates with the "galacitc plane"
+        #rot = np.array([[costheta,0.,-sintheta], [0.,1.,0.],[sintheta,0.,costheta]])
+        x = (x-Dsun)*costheta + (z)*sintheta
+        y = y
+        z = -(x-Dsun)*sintheta + (z)*costheta
     
-    Xsun=np.sqrt(Dsun**2.-Zsun**2.)
-    costheta, sintheta= Xsun/Dsun, -Zsun/Dsun
-    
-    #correct for the small rotation necesary to aling the coordinates with the "galacitc plane"
-    #rot = np.array([[costheta,0.,-sintheta], [0.,1.,0.],[sintheta,0.,costheta]])
-    x_ = (x-Dsun)*costheta + (z)*sintheta
-    y_ = y
-    z_ = -(x-Dsun)*sintheta + (z)*costheta
-    
-    r   = np.sqrt(y_**2.+x_**2.)
-    phi = np.arctan2(-y_,-x_)
-    z   = z_ 
+    r   = np.sqrt(y**2.+x**2.)
+    phi = np.arctan2(-y,-x)
+    z   = z 
     
     return r,phi,z
 
@@ -338,7 +342,7 @@ def astrometry_to_phase_space(phi, theta, parallax, muphistar, mutheta, vrad):
     return x, y, z, vx, vy, vz
 
 
-def phase_space_to_galcen(x, y, z, vx, vy, vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,Vsun=248.50,Wsun=7.25):
+def phase_space_to_galcen(x, y, z, vx, vy, vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,Vsun=248.50,Wsun=7.25,_cylindrical=True):
     """
     From the given phase space coordinates calculate the corresponding cylindrical coordinates. 
     The phase space coordinates are assumed to represent barycentric (i.e. centred on the Sun) positions and velocities.
@@ -374,11 +378,18 @@ def phase_space_to_galcen(x, y, z, vx, vy, vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,
     vphi  - azimuthal velocity (km/s, negative for prograde stars)
     vz    - vertical velocity (km/s, positive towards NGP)
     """
-    r, phi, z = cartesian_to_cylindrical(x, y, z, Dsun=Dsun, Zsun=Zsun)
     
-    ## 1) adapt velocities to the correct ref. frame
     Xsun=np.sqrt(Dsun**2.-Zsun**2.)
     costheta, sintheta= Xsun/Dsun, -Zsun/Dsun
+    
+    if _cylindrical:
+        r, phi, z = cartesian_to_cylindrical(x, y, z, Dsun=Dsun, Zsun=Zsun)
+    else:    
+        x_ = (x-Dsun)*costheta + (z)*sintheta
+        y_ = y
+        z_ = -(x-Dsun)*sintheta + (z)*costheta
+    
+    ## 1) adapt velocities to the correct ref. frame
     rot = np.array([[costheta,0.,-sintheta], [0.,1.,0.],[sintheta,0.,costheta]])
     
     vx_=vx+Usun
@@ -389,15 +400,18 @@ def phase_space_to_galcen(x, y, z, vx, vy, vz,Dsun=8.178,Zsun=0.0208,Usun=11.10,
     #vy_ = vy_
     vz_ = -vx_*rot[-1,0] + vz_*rot[-1,-1]
     
-    
-    ## 2) compute cylindrical velocities
-    s   = np.sin(-(np.pi+phi))
-    c   = np.cos(-(np.pi+phi))  
-    vr  = vx_*c - vy_*s
-    vphi= vx_*s + vy_*c
-    vz  = vz_
+    if _cylindrical:
+        ## 2) compute cylindrical velocities
+        s   = np.sin(phi)
+        c   = np.cos(phi)  
+        vr  = -vx_*c - vy_*s
+        vphi= vx_*s - vy_*c
+        vz  = vz_
 
-    return r,phi,z,vr,vphi,vz
+        return r,phi,z,vr,vphi,vz
+    
+    else:
+        return x_,y_,z_,vx_,vy_,vz_
 
 
 
