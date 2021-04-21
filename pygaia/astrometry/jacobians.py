@@ -415,8 +415,10 @@ def Jacob_galcen_to_cyl(x,y,z,vx,vy,vz,_fast = True):
 
     Jacobian of the transformation Galactocentric cartesian - Galactocentric cylindrical (6x6 or 4x4 matrix)
     """
-    r,phi,z = cartesian_to_cylindrical(x,y,z,_galcentric=True)
-    cphi,sphi = np.cos(phi),np.sin(phi)
+    #r,phi,z = cartesian_to_cylindrical(x,y,z,_galcentric=True)
+    r    = np.sqrt(x**2+y**2)
+    cphi = x/r
+    sphi = y/r
     
     # initialise
     if _fast:
@@ -442,18 +444,32 @@ def Jacob_galcen_to_cyl(x,y,z,vx,vy,vz,_fast = True):
     else:
         #distance-distance
         jac6[0,0] = 1
-       
+    
+    if not _fast:
+        #x'-vr
+        jac6[3,0]= vx*sphi**2/r - vy*cphi*sphi/r
+
+        #y'-vr
+        jac6[3,1]= -vx*cphi*sphi/r+vy*cphi**2/r
+    
     #vx'-vr
-    jac6[3-_offset,3-_offset]= -cphi
+    jac6[3-_offset,3-_offset]= +cphi
     
     #vy'-vr
-    jac6[3-_offset,4-_offset]= -sphi
+    jac6[3-_offset,4-_offset]= +sphi
+    
+    if not _fast:
+        #x'-vphi
+        jac6[4,0]= +vx*cphi*sphi/r + vy*sphi**2/r
+
+        #y'-vphi
+        jac6[4,1]= -vx*cphi**2/r - vy*cphi*sphi/r
     
     #vx'-vphi
-    jac6[4-_offset,3-_offset]= sphi
+    jac6[4-_offset,3-_offset]= -sphi
     
     #vy'-vphi
-    jac6[4-_offset,4-_offset]= -cphi
+    jac6[4-_offset,4-_offset]= +cphi
     
     #vz-vz'
     jac6[5-_offset,5-_offset]= 1
