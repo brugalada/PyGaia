@@ -476,3 +476,267 @@ def Jacob_galcen_to_cyl(x,y,z,vx,vy,vz,_fast = True):
     
     
     return jac6
+
+
+
+
+
+def Jacob_GAL_to_GALdist(l,b,parallax,pml,pmb,radial_velocity,_fast = True):
+    """
+    Returns the Jacobian of the transformation from GALACTIC to GALACTIC but with distance.
+    The phase space coordinates are assumed to represent barycentric (i.e. centred on the Sun) positions and velocities.
+    
+    WARNING! The code assumes that the distance is dist = 1/parallax. If a custom distance is used, then simply provide 1/distance as parallax.
+    
+    If '_fast' is True, then the Jacobian is reduced to a 4x4 matrix to speed up calculations (positional errors are ignored). Else, it considers that the first component of the covariance matrix corresponds to the transformation parallax -> distance.
+       
+    
+    Parameters
+    ----------
+
+    l : float
+        Galactic longitude (radians).
+    b : float
+        Galactic latitude (radians).
+    parallax : float
+        parallax.
+    pml : float
+        proper motion in Galactic longitude.
+    pmb: float
+        proper motion in Galactic latitude.
+    radial_velocity: float
+        velocity along the line of sight.
+    _fast: bool, optional
+        Ignore positional errors.
+
+    Returns
+    -------
+
+    Jacobian of the transformation GALACTIC - GALACTIC with distance (1/parallax) (6x6 or 4x4 matrix)
+    """
+    cb=np.cos(b); sb=np.sin(b);tanb=np.tan(b)
+    cl=np.cos(l); sl=np.sin(l)
+    
+    # initialise
+    if _fast:
+        jac_aux=np.eye(4)
+        _offset = 2
+    else:
+        jac_aux=np.eye(6)
+        _offset = 0
+    
+   
+    #par-dist
+    jac_aux[2-_offset,2-_offset]=-1/parallax**2
+    
+    return jac_aux
+
+
+
+def Jacob_GALdist_to_phase_space(l,b,distance,pml,pmb,radial_velocity,_fast = True):
+    """
+    Returns the Jacobian of the transformation from GALACTIC to Phase-space.
+    The phase space coordinates are assumed to represent barycentric (i.e. centred on the Sun) positions and velocities.
+       
+    If '_fast' is True, then the Jacobian is reduced to a 4x4 matrix to speed up calculations (positional errors are ignored). Else, it considers that the first component of the covariance matrix corresponds to the transformation parallax -> distance.
+       
+    
+    Parameters
+    ----------
+
+    l : float
+        Galactic longitude (radians).
+    b : float
+        Galactic latitude (radians).
+    distance : float
+        distance (kpc).
+    pml : float
+        proper motion in Galactic longitude.
+    pmb: float
+        proper motion in Galactic latitude.
+    radial_velocity: float
+        velocity along the line of sight.
+    _fast: bool, optional
+        Ignore positional errors.
+
+    Returns
+    -------
+
+    Jacobian of the transformation GALACTIC (with distance) - Phase-space (6x6 or 4x4 matrix)
+    """
+    cb=np.cos(b); sb=np.sin(b);tanb=np.tan(b)
+    cl=np.cos(l); sl=np.sin(l)
+    
+    # initialise
+    if _fast:
+        jac3=np.zeros([4,4])
+        jac4=np.zeros([4,4])
+        _offset = 2
+    else:
+        jac3=np.zeros([6,6])
+        jac4=np.zeros([6,6])
+        _offset = 0
+    
+    
+    # from pml-pmb to uvw
+    
+    #l-l
+    if not _fast:
+        jac3[0,0]=1
+    #b-b
+    if not _fast:
+        jac3[1,1]=1
+    #dist-dist
+    jac3[2-_offset,2-_offset]=1
+    
+    #U-l
+    if not _fast:
+        jac3[3,0]=-((_const*pml*cl)*distance)-radial_velocity*cb*sl+(_const*pmb*sb*sl)*distance
+    #U-b
+    if not _fast:
+        jac3[3,1]=-((_const*pmb*cb*cl)*distance)-radial_velocity*cl*sb
+    
+    #U-par
+    jac3[3-_offset,2-_offset]=-(_const*pmb*cl*sb)-(_const*pml*sl)
+    
+    #U-ml
+    jac3[3-_offset,3-_offset]=-((_const*sl)*distance)
+    
+    #U-mb
+    jac3[3-_offset,4-_offset]=-((_const*cl*sb)*distance)
+    
+    #U-vrad
+    jac3[3-_offset,5-_offset]=cb*cl
+    
+    
+    #V-l
+    if not _fast:
+        jac3[4,0]=radial_velocity*cb*cl-(_const*pmb*cl*sb)*distance-(_const*pml*sl)*distance
+         
+    #V-b
+    if not _fast:
+        jac3[4,1]=-((_const*pmb*cb*sl)*distance)-radial_velocity*sb*sl
+    
+    #V-par
+    jac3[4-_offset,2-_offset]=((_const*pml*cl))-(_const*pmb*sb*sl)
+    
+    #V-ml
+    jac3[4-_offset,3-_offset]=(_const*cl)*distance
+    
+    #V-mb
+    jac3[4-_offset,4-_offset]=-((_const*sb*sl)*distance)
+    
+    #V-vrad
+    jac3[4-_offset,5-_offset]=cb*sl
+    
+    
+    #W-l
+    if not _fast:
+        jac3[5,0]=0
+    #W-b
+    if not _fast:
+        jac3[5,1]=radial_velocity*cb-(_const*pmb*sb)*distance
+    #W-par
+    jac3[5-_offset,2-_offset]=((_const*pmb*cb))
+    #W-ml
+    jac3[5-_offset,3-_offset]=0
+    #W-mb
+    jac3[5-_offset,4-_offset]=(_const*cb)*distance
+    #W-vrad
+    jac3[5-_offset,5-_offset]=sb
+    
+    
+    # l,b,dist to x,y,z
+    
+    if not _fast:
+        #l-x
+        jac4[0,0]=-sl*cb*distance
+        #l-y
+        jac4[1,0]=cl*cb*distance
+        #b-x
+        jac4[0,1]=-cl*sb*distance
+        #b-y
+        jac4[1,1]=-sl*sb*distance
+        #b-z
+        jac4[2,1]=cb*distance
+        #dist-x
+        jac4[0,2]=cl*cb
+        #dist-y
+        jac4[1,2]=sl*cb
+        #dist-z
+        jac4[2,2]=sb
+    else:
+        #distance-distance
+        jac4[0,0] = 1
+    
+    jac4[3-_offset,3-_offset]=1
+    jac4[4-_offset,4-_offset]=1
+    jac4[5-_offset,5-_offset]=1
+    
+    return jac4@jac3
+
+
+
+def Jacob_GALdist_to_vtan(l,b,distance,pml,pmb,radial_velocity,_fast = True):
+    """
+    Returns the Jacobian of the transformation from GALACTIC to Vtan.
+    The phase space coordinates are assumed to represent barycentric (i.e. centred on the Sun) positions and velocities.
+    
+    WARNING! The code assumes that the distance is dist = 1/parallax. If a custom distance is used, then simply provide 1/distance as parallax.
+    
+    If '_fast' is True, then the Jacobian is reduced to a 4x4 matrix to speed up calculations (positional errors are ignored). Else, it considers that the first component of the covariance matrix corresponds to the transformation parallax -> distance.
+       
+    
+    Parameters
+    ----------
+
+    l : float
+        Galactic longitude (radians).
+    b : float
+        Galactic latitude (radians).
+    distance : float
+        distance (kpc).
+    pml : float
+        proper motion in Galactic longitude.
+    pmb: float
+        proper motion in Galactic latitude.
+    radial_velocity: float
+        velocity along the line of sight.
+    _fast: bool, optional
+        Ignore positional errors.
+
+    Returns
+    -------
+
+    Jacobian of the transformation GALACTIC (with distance) - Vtan (6x6 or 4x4 matrix)
+    """
+    cb=np.cos(b); sb=np.sin(b);tanb=np.tan(b)
+    cl=np.cos(l); sl=np.sin(l)
+    
+    # initialise
+    if _fast:
+        jac_=np.zeros((3,4))
+        _offset = 2
+    else:
+        jac_=np.zeros((5,6))
+        _offset = 0
+    
+    if ~_fast:
+        jac_[0,0] = 1
+        jac_[1,1] = 1
+        
+    jac_[2-_offset,2-_offset] = 1
+    jac_[4-_offset,5-_offset] = 1
+    
+    # from pml-pmb to uvw
+    
+    #d -> Vtan
+    jac_[3-_offset,2-_offset]=_const*np.sqrt(pml**2+pmb**2)
+    
+    #pml -> Vtan
+    jac_[3-_offset,3-_offset]=_const*distance*pml/np.sqrt(pml**2+pmb**2)
+    
+    #pmb -> Vtan
+    jac_[3-_offset,4-_offset]=_const*distance*pmb/np.sqrt(pml**2+pmb**2)
+    
+    return jac_
